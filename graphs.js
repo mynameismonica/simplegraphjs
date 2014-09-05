@@ -25,6 +25,7 @@ function SvgCanvas(graphHeight, graphWidth, containerDivId)
      this.canvas.containers["top"].setAttribute("height", graphHeight);
      
      this.currContainer = "top";
+     this.textSizes = [];
 }
 
 SvgCanvas.prototype = {
@@ -82,6 +83,23 @@ SvgCanvas.prototype = {
 		// add the rectangle to the canvas
 		this.canvas.containers[this.currContainer].appendChild(myRect);
 	},
+	drawText: function(pt,fontFamily,fontSize, text){
+		var t = document.createElementNS(this.namespace, "text");
+	    t.setAttribute("x", pt.x);
+	    t.setAttribute("y", pt.y);
+	    t.setAttribute("font-family",fontFamily);
+	    t.setAttribute("font-size", fontSize);
+	    
+        var textNode = document.createTextNode(text);
+        t.appendChild(textNode);
+	    
+		this.canvas.containers[this.currContainer].appendChild(t);
+		
+		var range = document.createRange();
+		range.selectNodeContents(textNode);
+		var rects = range.getClientRects();
+		this.textSizes.push(rects[0].width);
+	},
 	getContainers: function(){
 		return this.canvas.containers; 
 	},
@@ -90,6 +108,9 @@ SvgCanvas.prototype = {
 	},
 	setCurrentContainer: function(c){
 	   this.currContainer = c; 
+	},
+	getTextSizes: function(){
+		return this.textSizes;
 	}
 }
 
@@ -103,6 +124,8 @@ function SimpleGraphs(){
 	this.canvasInfo = {};
 	this.graphPadding = {left: "25px", right: "25px", bottom: "25px", top: "25px" };
 	this.axisMargins = {};
+	this.labelSets = [];
+	//this.currentLabel = 0; 
 }
 
 SimpleGraphs.prototype = {
@@ -250,23 +273,57 @@ SimpleGraphs.prototype = {
 			for(var i = 0; i < this.scaledData.length; i++)
 			{
 		    	this.paper.drawRectangle(this.barThickness,
-		                             	 this.scaledData[i],
-									 	 {x: parseInt(this.graphPadding.left) + this.axisMargins.y.left, 
-										  y: parseInt(this.canvasInfo.height) - 
-										     (parseInt(this.graphPadding.bottom) + this.axisMargins.x.bottom + this.barThickness*(i+1) + this.barMargins*i)},
-										  "black" );
+		    	                         this.scaledData[i],
+                                         {x: parseInt(this.graphPadding.left) 
+                                             + this.axisMargins.y.left, 
+                                          y: parseInt(this.canvasInfo.height) - 
+                                             (parseInt(this.graphPadding.bottom) 
+                                                       + this.axisMargins.x.bottom 
+                                                       + this.barThickness*(i+1) 
+                                                       + this.barMargins*i)},
+                                          "black" );
 			}
 		}
 		return this; 
+	},
+	setDistBtwnLabels: function(d){
+	    this.distBtwnLabels = d; 
+	    return this; 
+	},
+	setLabels: function(l){
+	    this.labelSets.push(l); 
+	    return this;
+	},
+	makeLabels: function(axis, fontSize, fontFamily){
+	   		                       
+	  for(var i = 0; i < this.labelSets[this.labelSets.length - 1].length; i++)
+	  {
+	      var extraPadding = i > 0 ? this.paper.getTextSizes()
+	                                          .reduce(function(a,b)
+	                                                  {return a+b;},0) : 0; 
+	      
+	      this.paper.drawText({x: parseInt(this.graphPadding.left) 
+	                             + this.axisMargins.y.left
+	                             + this.distBtwnLabels*(i+1)
+	                             + extraPadding,
+			                   y: parseInt(this.canvasInfo.height) 
+			                      - parseInt(this.graphPadding.bottom)},
+			                   fontFamily,
+			                   fontSize,
+			                   this.labelSets[this.labelSets.length-1][i]);
+	  }	                       
+	   
+	 //  this.paper.getRidOfTextSizes();
+	   return this; 
 	}
 }
 
-var SCALING_VALUE = 22;  
+var SCALING_VALUE = 30;  
 var graph = new SimpleGraphs();
 
 // var fn = function(value){ return Math.ceil(value*SCALING_VALUE); };
 // create the svg canvas
-graph.width("300px")
+graph.width("400px")
      .height("225px")
      .containingDiv("programming-skills-bar-graph");
      
@@ -282,5 +339,8 @@ graph.bar()
      .setData([5,7,9,5,8.5,5])
      .scale(function(value){ return Math.ceil(value*SCALING_VALUE); })
      .setBarMargins(2)
-     .drawBars();
+     .drawBars()
+     .setDistBtwnLabels(65)
+     .setLabels(["Familiar", "Proficient", "Advanced"])
+     .makeLabels("x" ,"11px", "Arial");
      
