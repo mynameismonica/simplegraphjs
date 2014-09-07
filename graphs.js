@@ -329,7 +329,7 @@ graph.width("400px")
      
 graph.bar()
      .orientation("horizontal")
-     .setAxisMargins("y","left", 25)
+     .setAxisMargins("y","left", 10)
      .setAxisMargins("x","bottom",20)
      .drawAxises("draw x", "draw y")
      .setTickHeight(4)
