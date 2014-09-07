@@ -30,24 +30,6 @@ function SvgCanvas(graphHeight, graphWidth, containerDivId)
 
 SvgCanvas.prototype = {
 	constructor: SvgCanvas,
-	/*=======================================================================	
-	   Function lets users draw lines on the canvas
-	   Input: 1) startingPt: An object that represents a point on a 
-	                         Cartesian graph. It has two data members, x and 
-	                         y. Both of the data members are integers. It
-	                         represents the starting point of the line.
-	          2) endingPt: An object that represents a point in Cartesian 
-	                       graph. It represents the ending point in the graph. 
-	                       Like the previous parameter, it has two data 
-	                       members, x and y, and both of the data members are
-	                       integers. 
-	          3) strokeColor: A string that represents a color. This 
-	                          can be a hex code, or a color name (for common
-	                          colors, like black).
-	          4) className: A name of a class 
-	          5) containerName: The name of the container this class is in. 
-	=======================================================================*/
-
 	drawLine: function(startingPt, endingPt, strokeColor, className){
 		var l = document.createElementNS(this.namespace, "line");	
 		 // draw x 
@@ -83,12 +65,16 @@ SvgCanvas.prototype = {
 		// add the rectangle to the canvas
 		this.canvas.containers[this.currContainer].appendChild(myRect);
 	},
-	drawText: function(pt,fontFamily,fontSize, text){
+	drawText: function(pt,fontFamily,fontSize, text, className, wrap, textMargins){
 		var t = document.createElementNS(this.namespace, "text");
-	    t.setAttribute("x", pt.x);
+	    t.setAttribute("x", pt.x );
 	    t.setAttribute("y", pt.y);
 	    t.setAttribute("font-family",fontFamily);
 	    t.setAttribute("font-size", fontSize);
+	    
+	    if(typeof className == 'string' || className instanceof String)
+	       t.setAttribute("class", className);
+	    
 	    
         var textNode = document.createTextNode(text);
         t.appendChild(textNode);
@@ -99,6 +85,11 @@ SvgCanvas.prototype = {
 		range.selectNodeContents(textNode);
 		var rects = range.getClientRects();
 		this.textSizes.push(rects[0].width);
+		
+		if(wrap)
+		  t.setAttribute("x", pt.x - rects[0].width - textMargins);
+		
+		//return {node: t, width: rects[0].width};
 	},
 	getContainers: function(){
 		return this.canvas.containers; 
@@ -111,6 +102,27 @@ SvgCanvas.prototype = {
 	},
 	getTextSizes: function(){
 		return this.textSizes;
+	},
+	drawSector: function(arc, color){
+		var path = document.createElementNS(this.namespace, "path");		
+		
+		var d = "M " + 
+		        arc.center.x + "," + arc.center.y + 
+		        " L " + 
+		        arc.startingPt.x + "," + arc.startingPt.y + 
+		        " A" + 
+		        arc.radius + "," + arc.radius + " " + 
+		        arc.xAxisAngle + " " + arc.greaterThan180degrees + 
+		        "," + arc.sweep + " " +  arc.endingPt.x + "," + arc.endingPt.y + "z";
+		
+		console.log("print the path string: " + d); 
+		path.setAttribute("d", d); // x coordinate for center
+           
+        path.setAttribute("fill", color);
+		
+		
+		// add the rectangle to the canvas
+		this.canvas.containers[this.currContainer].appendChild(path);		
 	}
 }
 
@@ -310,21 +322,142 @@ SimpleGraphs.prototype = {
 			                      - parseInt(this.graphPadding.bottom)},
 			                   fontFamily,
 			                   fontSize,
-			                   this.labelSets[this.labelSets.length-1][i]);
+			                   this.labelSets[this.labelSets.length-1][i],
+			                   null, 
+			                   false,
+			                   null);
 	  }	                       
 	   
 	 //  this.paper.getRidOfTextSizes();
 	   return this; 
+	},
+	// labels that are inside the bars themselves
+	addInnerLabels: function(textMargins,fontFamily,fontSize){
+         
+         for(var i = 0; i < this.labelSets[this.labelSets.length - 1].length; i++){
+	         this.paper.drawText({x: parseInt(this.graphPadding.left) 
+	                                 + this.axisMargins.y.left 
+	                                 + this.scaledData[i],
+	                              y: parseInt(this.canvasInfo.height) 
+	                                 - (parseInt(this.graphPadding.bottom) 
+	                                    + this.axisMargins.x.bottom 
+	                                    + this.barThickness*i + this.barMargins*(i+1) 
+	                                    + textMargins)},
+	                             fontFamily,
+	                             fontSize, 
+	                             this.labelSets[this.labelSets.length - 1][i],
+	                             "barText", 
+	                             true, 
+	                             textMargins)
+         }
+         
+		 return this; 
+	},
+/*****************************************************************************************
+ *                  PIE CHART FUNCTIONS
+ *****************************************************************************************/
+	pieChart: function(){
+	   this.paper.addGroup("pieChart");
+	   this.paper.setCurrentContainer("pieChart");	
+	  // console.log("the current container is: " + this.paper.currContainer);
+	   return this; 
+	},
+	calculatePercentages: function(){	    
+	    // the accumulator is zero 
+	    var sum = this.data.reduce(function(a,b){
+	                                   return a + b; },0);
+	    
+	    // calculate the percentage for each data point (relative to the entire data set), 
+	    this.percentages = this.data.map(function(n){
+		                                     return (n/sum).toPrecision(5);});
+		                                     
+		//console.log("the percentages are " + this.percentages); 
+	    
+		return this;
+	},
+	calculateRelativeAngles: function(){
+	
+	    this.relativeAngles = this.percentages.map(function(p){
+	        var angle = {radians: 2*Math.PI*p, degrees: p*360};
+	       // console.log("the relative angle is in degrees: " + angle.degrees);
+	        return angle; 
+	    });
+		return this; 
+	},
+	calculateAbsoluteAngles: function(){
+		this.absoluteAngles = this.relativeAngles.map(function(a){
+		
+		    var initiialArray = arguments[2];
+		    
+		    var subArray = initiialArray.slice(0,arguments[1] + 1);
+		    
+		    var currentSum = {radians: 0, degrees: 0}; 
+		   
+		    for(var i = 0; i < subArray.length; i++){
+			   currentSum = {radians: currentSum.radians + subArray[i].radians, 
+				             degrees: currentSum.degrees + subArray[i].degrees};   
+		    }
+            //console.log("the current absolute angle is: " + currentSum.degrees);
+		    return currentSum; 
+		
+		}); // end of the map function 
+		
+		return this; 
+	},
+	determineStartingPts: function(c,r){
+	   var startingAngles = [{radians: 0, degrees: 0}].concat(this.absoluteAngles.slice(0, this.absoluteAngles.length - 1));
+	  // startingAngles.forEach(function(a){
+	  //    console.log("the starting angle: " + a.degrees); 
+	  // });
+	   
+	   this.startingPts = startingAngles.map(function(a){
+	       return {x: c.x + r*Math.cos(a.radians), y: c.y - r*Math.sin(a.radians)};
+	   });
+	   
+	   return this; 
+	},
+	determineEndingPts: function(c,r){
+		this.endingPts = this.absoluteAngles.map(function(a){
+		   return {x: c.x + r*Math.cos(a.radians), y: c.y - r*Math.sin(a.radians)};
+		});
+		return this; 
+	},
+	// c: the center of the pie chart, an object with two properties x and y
+	// r: the radius of the pie chart
+	drawPieChart: function(c,r){
+	//	var arc = { center: c,
+	//	            radius: r, 
+	//	            startingPt: s, 
+	//	            endingPt: e, 
+	//	            greaterThan180degrees: arcGreaterThan180,
+	//	            xAxisAngle: 0,
+	//	            sweep: 0};
+		var deltaColor = 1/this.percentages.length; 
+		 
+		for(var i = 0; i < this.percentages.length; i++)
+		{
+		      var arcGreaterThan180 = this.relativeAngles[i].degrees > 180 ? 1 : 0; 
+		      var arc = {center: c, 
+			             radius: r, 
+			             startingPt: this.startingPts[i],
+			             endingPt: this.endingPts[i],
+			             greaterThan180degrees: arcGreaterThan180,
+			             xAxisAngle: 0, 
+			             sweep: 0};
+			             
+			  this.paper.drawSector(arc, "rgba(0,0,0," + deltaColor*(i+1) + ")");
+		}
+		return this; 
 	}
 }
 
-var SCALING_VALUE = 30;  
+var SCALING_VALUE = 35;  
 var graph = new SimpleGraphs();
 
 // var fn = function(value){ return Math.ceil(value*SCALING_VALUE); };
 // create the svg canvas
-graph.width("400px")
-     .height("225px")
+graph.width("450px")
+     .height("270px")
      .containingDiv("programming-skills-bar-graph");
      
 graph.bar()
@@ -336,11 +469,54 @@ graph.bar()
      .setTickDistance("x",20)
      .drawTicks("x")
      .setBarThickness(25)
-     .setData([5,7,9,5,8.5,5])
+     .setData([6.5,9,10.8,5,8.5,5,7])
      .scale(function(value){ return Math.ceil(value*SCALING_VALUE); })
      .setBarMargins(2)
      .drawBars()
      .setDistBtwnLabels(65)
      .setLabels(["Familiar", "Proficient", "Advanced"])
-     .makeLabels("x" ,"11px", "Arial");
+     .makeLabels("x" ,"15px", "Arial")
+     .setLabels(["C++", "PHP", "HTML","Java", "CSS", "Javascript", "Python"])
+     .addInnerLabels(5, "Arial", "16px");
      
+     
+var graph2 = new SimpleGraphs();
+
+// set up the canvas 
+graph2.width("450px")
+      .height("185px")
+      .containingDiv("dev-tools-skills-bar-graph");
+      
+      
+graph2.bar()
+     .orientation("horizontal")
+     .setAxisMargins("y","left", 10)
+     .setAxisMargins("x","bottom",20)
+     .drawAxises("draw x", "draw y")
+     .setTickHeight(4)
+     .setTickDistance("x",20)
+     .drawTicks("x")
+     .setBarThickness(25)
+     .setData([6.5,9,10.8,5])
+     .scale(function(value){ return Math.ceil(value*SCALING_VALUE); })
+     .setBarMargins(2)
+     .drawBars()
+     .setDistBtwnLabels(65)
+     .setLabels(["Familiar", "Proficient", "Advanced"])
+     .makeLabels("x" ,"15px", "Arial")
+     .setLabels(["Android Development", "Eclipse", "Visual Studio","Git"])
+     .addInnerLabels(5, "Arial", "16px");
+     
+var graph3 = new SimpleGraphs();
+graph3.width("200px")
+      .height("200px")
+      .containingDiv("programming-skills-by-projects");
+graph3.pieChart()
+      .setData([3,2,4,4,3])
+      .calculatePercentages()
+      .calculateRelativeAngles()
+      .calculateAbsoluteAngles()
+      .determineStartingPts({x: 100, y: 100}, 100)
+      .determineEndingPts({x: 100, y: 100}, 100)
+      .drawPieChart({x: 100, y: 100}, 100);
+                    
